@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <base href="http://chegg-tutors.appspot.com/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="/public/styles.css" />
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+  </head>
+  <body>
+    <div id="chg-balloon-logo-container">
+        <img src="/public/img/logo.png" alt="balloon-logo" />
+    </div>
+    <div id="chg-balloon-controls-container">
+        <p>Enter a username to get started!</p>
+        <input id="chg-balloon-input" maxlength="2048" placeholder="e.g. BalloonMaster99"
+            name="username" autocomplete="OFF"  type="text" value="" />
+        <button id="chg-balloon-submit">Check availability</button>
+        <div id="chg-available" style="display:none;">
+            <hr/>
+            <p>
+                Congrats! <strong id="username-available"> Username </strong> is available
+            </p>
+        </div>
+        <div id="chg-errors" style="display:none;">
+        </div>
+        <div id="chg-suggestions" style="display:none;">
+            <hr/>
+            <p>
+                <strong id="username-not-available"> Username </strong> is not available. How about one of these
+            </p>
+            <div id="chg-suggestions-list">
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        //Global object to do all the work
+        var suggestion = {
+
+            //Searched username
+            username: "",
+            isValid: true,
+            errorMessages: [],
+            possibleUsernames: [],
+            //Maximum number of retrys in case not enough usernames are available
+            retrys : 3,
+
+            //Validates empty and non alpha-numerical usernames
+            validate: function (){
+                this.retrys = 3;
+                this.isValid = true;
+                this.errorMessages=[];
+                    
+                if(!this.username){
+                    this.errorMessages.push("Please enter the username");
+                    this.isValid=false;
+                }
+                if( /[^a-zA-Z0-9]/.test(this.username) ){
+                    this.errorMessages.push("Please enter only letters and numbers");
+                    this.isValid=false;
+                }
+
+            },
+
+            showErrors: function(){
+
+                var errorText = "<hr/>Ups there's an error: "  ;
+                this.errorMessages.forEach(function(error){
+                    errorText += error + "<br/>";
+                });
+                $("#chg-errors").show();
+                $("#chg-errors").html(errorText);
+                $("#chg-suggestions").hide();
+                $("#chg-available").hide();
+            },
+
+            //Checks if the username is available or not
+            checkAvailability: function(){
+                this.generatePossibleUsernames();//Permutes the users breaking them with Caps And lower case
+                this.isAvailable = false;
+                var usernames = this.possibleUsernames;
+                $.ajax("/coding-challenge/api/user/?username=" + usernames.join(','),{
+                    success: function(response){
+                        var availableUserNames = [];
+                        var isFirst = true;
+                        var available = false;
+                        usernames.forEach(function(username, i){
+                            var isFound = response.filter(function(u){ return u.username == username });
+                            if ( isFound.length === 0){
+                                if(isFirst){//If our first element in the list is the wanted user
+                                    available = true;
+                                    suggestion.available(username); //Shows that it is available
+                                }
+                                availableUserNames.push(username);
+                            }
+                            isFirst = false;
+                        });
+                        if(!available){
+                            if(availableUserNames.length < 3 && suggestion.retrys > 0){ //Trys again if it does not meet the requirements
+                                suggestion.retrys--;
+                                suggestion.checkAvailability();
+                            }else{
+                                suggestion.suggest(availableUserNames, usernames[0]);
+                            }
+                        }
+                    },
+                    error: function(response){//In case the api is not available
+                        suggestions.errorMessages.push("We could not connect to our servers, please try again later");
+                        suggestions.showErros();
+                    }
+                });
+
+            },
+            
+            //Show the 'Congrats' message
+            available: function(username){
+                $("#chg-available").show();
+                $("#chg-suggestions").hide();
+                $("#chg-errors").hide();
+                $("#username-available").text(username);
+            },
+
+            //Shows suggestions
+            suggest: function(suggestions, username){
+                $("#chg-available").hide();
+                $("#chg-errors").hide();
+                $("#chg-suggestions").show();
+                $("#username-not-available").text(username);
+                $("#chg-suggestions-list").html("");
+                for(var i = 0; i< 3; i++){
+                    console.log(suggestion);
+                    $("#chg-suggestions-list").append($("<p>").text(suggestions[i]));
+                    $("#chg-suggestions-list").append($("<hr/>"));
+
+                }
+            },
+
+            //Here's where tha magic happens
+            //It generates usernames based on the one given
+            generatePossibleUsernames: function(){
+                //Words to concatenate to create new user names
+                //Feel free to add as many as you like
+                var commonAcronyms = [
+                    "Dr",
+                    "MD",
+                    "Mr",
+                    "Mrs",
+                    "Ms",
+                    "PHD"
+                ];
+                this.possibleUsernames = [];
+                var words = this.splitUsername();//Splits the username
+                this.permute(words);//Finds permutation from usernames
+                var auxPossibleNames = [];
+                this.possibleUsernames.forEach(function(possibleUsername){
+                    auxPossibleNames.push(possibleUsername.join('')); 
+                });
+
+                this.possibleUsernames = auxPossibleNames;
+                if(this.possibleUsernames.length > 6){ // Too many possibilites
+                    //Take just 6
+                    this.possibleUsernames = this.possibleUsernames.slice(0,5);
+                }
+
+                //Add 3 with random commonAcronyms
+                var acronymPossibleUsernames = [];
+                for(var i = 0; i < 3; i++){ // this could be a propertie of suggestion
+                    var randomAcronym = Math.floor((Math.random() * commonAcronyms.length)); 
+                    var randomUsername = Math.floor((Math.random() * this.possibleUsernames.length)); 
+                    acronymPossibleUsernames.push(
+                            commonAcronyms.splice(randomAcronym, 1)
+                            +
+                            this.possibleUsernames[randomUsername]
+                    );
+
+                }
+
+                //Finaylly we add 6 with random numbers
+                numberPossibleUsernames = [];
+                for(var i = 0; i < 6; i++){// this could be a propertie of suggestion
+                    var randomUsername = Math.floor((Math.random() * this.possibleUsernames.length)); 
+                    var randomNumber = Math.floor((Math.random() * 999));
+                    numberPossibleUsernames.push( this.possibleUsernames[randomUsername] + randomNumber);
+                }
+                this.possibleUsernames = this.possibleUsernames.concat(acronymPossibleUsernames);
+                this.possibleUsernames = this.possibleUsernames.concat(numberPossibleUsernames);
+            },
+
+            permute: function(arr, memo) { //Permutes the words
+                var cur, memo = memo || [];
+
+                for (var i = 0; i < arr.length; i++) {
+                    cur = arr.splice(i, 1);
+                    if (arr.length === 0) {
+                        this.possibleUsernames.push(memo.concat(cur));
+                    }
+                    this.permute(arr.slice(), memo.concat(cur));
+                    arr.splice(i, 0, cur[0]);
+                }
+
+                return this.possibleUsernames;
+            },
+
+
+            splitUsername: function (){
+                var words = this.username;
+
+                // Splits numbers, ie user87name would become user,87,name
+                var numbers = words.match(/\d+/g); 
+                if(numbers !== null){
+                    numbers.forEach(function(number){
+                       words = words.replace(number, '.' + number + '.');
+                    });
+                }
+
+                // Splits capital letter, ie userWORDname would become user,WORD,name
+                var capitalLetters = words.match(/[A-Z]+/g);
+                if(capitalLetters !== null){
+                    capitalLetters.forEach(function(capitalLetter){
+                        words = words.replace(capitalLetter, '.' + capitalLetter);
+                    });
+                }
+
+                //Cleans string for non necesary dots
+                words = words.replace(/^\./,'');
+                words = words.replace(/\.$/,'');
+                words = words.replace(/\.+/,'.');
+                return words.split('.');
+            },
+
+        }
+
+        $("#chg-balloon-submit").click(function() {
+            suggestion.username = $("#chg-balloon-input").val();
+            suggestion.validate();
+            if(suggestion.isValid){
+                suggestion.checkAvailability();
+            }else{
+                suggestion.showErrors();
+            }
+
+        });
+    </script>
+
+  </body>
+</html>
